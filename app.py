@@ -1,0 +1,173 @@
+from __future__ import annotations
+
+import socket
+from pathlib import Path
+from uuid import uuid4
+
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory, url_for
+from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.utils import secure_filename
+
+from image_converter import convert_image, normalize_format
+
+
+BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = BASE_DIR / "storage" / "uploads"
+OUTPUT_DIR = BASE_DIR / "storage" / "outputs"
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"}
+TARGET_FORMATS = ("jpg", "png", "webp")
+
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024
+
+
+class ConversionInputError(ValueError):
+    pass
+
+
+def has_allowed_extension(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def prepare_storage() -> None:
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def choose_port(start_port: int = 5000, attempts: int = 20) -> int:
+    for port in range(start_port, start_port + attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            if sock.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+
+    raise RuntimeError("사용 가능한 로컬 포트를 찾지 못했어요.")
+
+
+def get_target_format() -> str:
+    target_format = request.form.get("target_format", "jpg").lower()
+    if target_format not in TARGET_FORMATS:
+        raise ConversionInputError("지원하지 않는 변환 형식이에요.")
+    return target_format
+
+
+def convert_uploaded_file(uploaded_file, target_format: str) -> dict[str, str]:
+    if uploaded_file is None or uploaded_file.filename == "":
+        raise ConversionInputError("변환할 이미지 파일을 먼저 선택해 주세요.")
+
+    original_name = uploaded_file.filename
+    if not original_name or not has_allowed_extension(original_name):
+        raise ConversionInputError("JPG, PNG, WEBP, BMP, TIFF 이미지만 변환할 수 있어요.")
+
+    prepare_storage()
+
+    job_id = uuid4().hex
+    source_extension = Path(original_name).suffix.lower()
+    source_path = UPLOAD_DIR / f"{job_id}{source_extension}"
+    uploaded_file.save(source_path)
+
+    _, output_extension = normalize_format(target_format)
+    original_stem = Path(original_name).stem or "image"
+    display_output_name = f"{original_stem}{output_extension}"
+    safe_output_stem = secure_filename(original_stem) or "image"
+    output_path = OUTPUT_DIR / f"{job_id}_{safe_output_stem}{output_extension}"
+
+    try:
+        converted_path = convert_image(source_path, target_format, output_file=output_path)
+    except Exception as exc:
+        raise ConversionInputError(f"변환하지 못했어요. 이미지 파일인지 확인해 주세요. ({exc})") from exc
+
+    return {
+        "status": "completed",
+        "original_name": original_name,
+        "output_name": display_output_name,
+        "download_file": converted_path.name,
+        "download_url": url_for(
+            "download",
+            filename=converted_path.name,
+            name=display_output_name,
+        ),
+    }
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(error):
+    message = "파일 용량이 너무 커요. 30MB 이하 이미지로 다시 시도해 주세요."
+    if request.path.startswith("/api/"):
+        return jsonify({"status": "failed", "message": message}), 413
+
+    return (
+        render_template(
+            "index.html",
+            target_formats=TARGET_FORMATS,
+            selected_format="jpg",
+            error=message,
+        ),
+        413,
+    )
+
+
+@app.get("/")
+def index():
+    return render_template(
+        "index.html",
+        target_formats=TARGET_FORMATS,
+        selected_format="jpg",
+    )
+
+
+@app.get("/convert")
+def convert_get():
+    return redirect(url_for("index"))
+
+
+@app.post("/api/convert")
+def convert_api():
+    try:
+        target_format = get_target_format()
+        result = convert_uploaded_file(request.files.get("image"), target_format)
+    except ConversionInputError as exc:
+        return jsonify({"status": "failed", "message": str(exc)}), 400
+
+    return jsonify(result)
+
+
+@app.post("/convert")
+def convert():
+    try:
+        target_format = get_target_format()
+        result = convert_uploaded_file(request.files.get("image"), target_format)
+    except ConversionInputError as exc:
+        return render_template(
+            "index.html",
+            target_formats=TARGET_FORMATS,
+            selected_format=request.form.get("target_format", "jpg"),
+            error=str(exc),
+        )
+
+    return render_template(
+        "index.html",
+        target_formats=TARGET_FORMATS,
+        selected_format=target_format,
+        original_name=result["original_name"],
+        output_name=result["output_name"],
+        download_file=result["download_file"],
+        success="변환이 끝났어요.",
+    )
+
+
+@app.get("/downloads/<filename>")
+def download(filename: str):
+    download_name = request.args.get("name") or filename
+    return send_from_directory(
+        OUTPUT_DIR,
+        filename,
+        as_attachment=True,
+        download_name=download_name,
+    )
+
+
+if __name__ == "__main__":
+    prepare_storage()
+    app.run(host="127.0.0.1", port=choose_port(), debug=True, use_reloader=False)

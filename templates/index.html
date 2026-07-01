@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>File Converter</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="window-dots" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <strong>FILE CONVERTER</strong>
+      <span class="host">{{ request.host }}</span>
+    </header>
+
+    <main class="workspace">
+      <form id="converter-form" class="converter" action="{{ url_for('convert') }}" method="post" enctype="multipart/form-data">
+        <label id="dropzone" class="dropzone" for="image">
+          <input id="image" name="image" type="file" accept="image/*" multiple>
+          <span class="dropzone-title">이미지 파일을 올려주세요</span>
+          <span id="file-name" class="file-name">{{ original_name or "선택된 파일 없음" }}</span>
+          <span class="file-button">파일 선택</span>
+        </label>
+
+        <section class="controls" aria-label="변환 설정">
+          <div class="format-group">
+            <span class="format-label">변환</span>
+            <div class="format-actions">
+              {% for format in target_formats %}
+                <label class="format-option">
+                  <input
+                    type="radio"
+                    name="target_format"
+                    value="{{ format }}"
+                    {% if selected_format == format %}checked{% endif %}
+                  >
+                  <span>{{ format.upper() }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <button id="convert-button" class="convert-button" type="submit">변환하기</button>
+        </section>
+      </form>
+
+      <p id="form-message" class="message error" hidden></p>
+
+      {% if error %}
+        <p class="message error">{{ error }}</p>
+      {% endif %}
+
+      <section class="queue" aria-live="polite">
+        <div class="queue-heading">
+          <h2>변환 상태</h2>
+          <span id="queue-count">{{ "1개 파일" if success else "0개 파일" }}</span>
+        </div>
+        <div id="job-list" class="job-list">
+          {% if success %}
+            <article class="job-card is-completed">
+              <div class="job-header">
+                <div class="job-title">
+                  <strong>{{ original_name }}</strong>
+                  <span>{{ output_name }}</span>
+                </div>
+                <span class="status-badge status-completed">완료</span>
+              </div>
+              <div class="progress" aria-label="변환 진행률">
+                <span style="width: 100%"></span>
+              </div>
+              <div class="job-footer">
+                <span class="job-message">{{ success }}</span>
+                <a class="download-button" href="{{ url_for('download', filename=download_file, name=output_name) }}">다운로드</a>
+              </div>
+            </article>
+          {% endif %}
+        </div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  </body>
+</html>
