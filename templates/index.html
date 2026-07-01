@@ -20,8 +20,8 @@
     <main class="workspace">
       <form id="converter-form" class="converter" action="{{ url_for('convert') }}" method="post" enctype="multipart/form-data">
         <label id="dropzone" class="dropzone" for="image">
-          <input id="image" name="image" type="file" accept="image/*" multiple>
-          <span class="dropzone-title">이미지 파일을 올려주세요</span>
+          <input id="image" name="image" type="file" multiple>
+          <span class="dropzone-title">파일을 올려주세요</span>
           <span id="file-name" class="file-name">{{ original_name or "선택된 파일 없음" }}</span>
           <span class="file-button">파일 선택</span>
         </label>
@@ -53,6 +53,14 @@
       {% if error %}
         <p class="message error">{{ error }}</p>
       {% endif %}
+
+      <section class="recommendations">
+        <div class="recommendation-heading">
+          <h2>파일 인식</h2>
+          <span id="recommendation-summary">파일을 선택하면 종류와 추천 포맷이 표시됩니다.</span>
+        </div>
+        <div id="recommendation-list" class="recommendation-list"></div>
+      </section>
 
       <section class="queue" aria-live="polite">
         <div class="queue-heading">

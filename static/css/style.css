@@ -10,6 +10,8 @@
   --accent-ink: #ffffff;
   --error: #c93d3d;
   --error-soft: #faecec;
+  --pending: #8a6424;
+  --pending-soft: #fff4da;
   --progress: #3869d4;
 }
 
@@ -66,6 +68,7 @@ body {
 }
 
 .converter,
+.recommendations,
 .queue {
   max-width: 920px;
 }
@@ -213,10 +216,12 @@ input[type="file"],
   font-weight: 700;
 }
 
+.recommendations,
 .queue {
   margin-top: 20px;
 }
 
+.recommendation-heading,
 .queue-heading {
   display: flex;
   align-items: center;
@@ -225,14 +230,72 @@ input[type="file"],
   margin-bottom: 10px;
 }
 
+.recommendation-heading h2,
 .queue-heading h2 {
   margin: 0;
   font-size: 18px;
 }
 
+.recommendation-heading span,
 .queue-heading span {
   color: var(--muted);
   font-size: 14px;
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.recommendation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.recommendation-title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.recommendation-title strong,
+.recommendation-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recommendation-title span,
+.recommendation-formats em {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.recommendation-formats {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.recommendation-formats span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #cbd8d2;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .job-list {
@@ -257,6 +320,11 @@ input[type="file"],
 .job-card.is-failed {
   border-color: #e2b7b7;
   background: #fffafa;
+}
+
+.job-card.is-not-ready {
+  border-color: #ead39a;
+  background: #fffdf8;
 }
 
 .job-header,
@@ -312,6 +380,11 @@ input[type="file"],
   color: var(--error);
 }
 
+.status-not-ready {
+  background: var(--pending-soft);
+  color: var(--pending);
+}
+
 .progress {
   width: 100%;
   height: 9px;
@@ -335,6 +408,10 @@ input[type="file"],
 
 .is-failed .progress span {
   background: var(--error);
+}
+
+.is-not-ready .progress span {
+  background: var(--pending);
 }
 
 .download-button {
@@ -371,6 +448,8 @@ input[type="file"],
   }
 
   .controls,
+  .recommendation-heading,
+  .recommendation-item,
   .job-header,
   .job-footer {
     align-items: stretch;

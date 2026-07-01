@@ -6,6 +6,123 @@ const formMessage = document.querySelector("#form-message");
 const jobList = document.querySelector("#job-list");
 const queueCount = document.querySelector("#queue-count");
 const convertButton = document.querySelector("#convert-button");
+const recommendationList = document.querySelector("#recommendation-list");
+const recommendationSummary = document.querySelector("#recommendation-summary");
+
+const IMAGE_OUTPUTS = ["jpg", "png", "webp"];
+const PDF_OUTPUTS = ["jpg", "png", "webp"];
+const VIDEO_OUTPUTS = ["mp4", "webm", "gif", "mp3"];
+const AUDIO_OUTPUTS = ["mp3", "wav", "ogg"];
+
+const EXTENSION_HINTS = {
+  jpg: ["image", "JPG image"],
+  jpeg: ["image", "JPG image"],
+  png: ["image", "PNG image"],
+  webp: ["image", "WEBP image"],
+  bmp: ["image", "BMP image"],
+  tif: ["image", "TIFF image"],
+  tiff: ["image", "TIFF image"],
+  gif: ["image", "GIF image"],
+  mp4: ["video", "MP4 video"],
+  mov: ["video", "QuickTime video"],
+  webm: ["video", "WEBM video"],
+  mp3: ["audio", "MP3 audio"],
+  wav: ["audio", "WAV audio"],
+  flac: ["audio", "FLAC audio"],
+  ogg: ["audio", "OGG audio"],
+  pdf: ["document", "PDF document"],
+  zip: ["archive", "ZIP archive"],
+};
+
+function startsWith(bytes, signature) {
+  return signature.every((value, index) => bytes[index] === value);
+}
+
+function textAt(bytes, start, end) {
+  return String.fromCharCode(...bytes.slice(start, end));
+}
+
+function detectMagic(bytes) {
+  if (startsWith(bytes, [0xff, 0xd8, 0xff])) return ["image", "JPG image"];
+  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return ["image", "PNG image"];
+  if (textAt(bytes, 0, 6) === "GIF87a" || textAt(bytes, 0, 6) === "GIF89a") return ["image", "GIF image"];
+  if (textAt(bytes, 0, 2) === "BM") return ["image", "BMP image"];
+  if (startsWith(bytes, [0x49, 0x49, 0x2a, 0x00]) || startsWith(bytes, [0x4d, 0x4d, 0x00, 0x2a])) return ["image", "TIFF image"];
+  if (textAt(bytes, 0, 4) === "RIFF" && textAt(bytes, 8, 12) === "WEBP") return ["image", "WEBP image"];
+  if (textAt(bytes, 0, 5) === "%PDF-") return ["document", "PDF document"];
+  if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) return ["archive", "ZIP archive"];
+  if (textAt(bytes, 4, 8) === "ftyp") return ["video", "MP4 video"];
+  if (textAt(bytes, 0, 3) === "ID3" || startsWith(bytes, [0xff, 0xfb]) || startsWith(bytes, [0xff, 0xf3]) || startsWith(bytes, [0xff, 0xf2])) return ["audio", "MP3 audio"];
+  if (textAt(bytes, 0, 4) === "RIFF" && textAt(bytes, 8, 12) === "WAVE") return ["audio", "WAV audio"];
+  if (textAt(bytes, 0, 4) === "fLaC") return ["audio", "FLAC audio"];
+  if (textAt(bytes, 0, 4) === "OggS") return ["audio", "OGG audio"];
+  return null;
+}
+
+function outputsForKind(kind) {
+  if (kind === "image") return IMAGE_OUTPUTS;
+  if (kind === "document") return PDF_OUTPUTS;
+  if (kind === "video") return VIDEO_OUTPUTS;
+  if (kind === "audio") return AUDIO_OUTPUTS;
+  return [];
+}
+
+async function inspectFile(file) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  const extensionHint = EXTENSION_HINTS[extension] || null;
+  const header = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const magicHint = detectMagic(header);
+  const hint = magicHint || extensionHint || ["unknown", "Unknown file"];
+  const outputs = outputsForKind(hint[0]);
+
+  return {
+    name: file.name,
+    kind: hint[0],
+    label: hint[1],
+    outputs,
+    magicLabel: magicHint?.[1] || "",
+    extensionLabel: extensionHint?.[1] || "",
+  };
+}
+
+function renderRecommendation(info) {
+  const item = document.createElement("article");
+  item.className = "recommendation-item";
+
+  const outputs = info.outputs.length > 0
+    ? info.outputs.map((output) => `<span>${output.toUpperCase()}</span>`).join("")
+    : "<em>아직 변환 지원 예정</em>";
+
+  item.innerHTML = `
+    <div class="recommendation-title">
+      <strong></strong>
+      <span></span>
+    </div>
+    <div class="recommendation-formats">${outputs}</div>
+  `;
+
+  item.querySelector("strong").textContent = info.name;
+  item.querySelector(".recommendation-title span").textContent = `${info.label}로 인식`;
+  return item;
+}
+
+async function updateRecommendations(files) {
+  if (!recommendationList || !recommendationSummary) {
+    return;
+  }
+
+  recommendationList.innerHTML = "";
+
+  if (files.length === 0) {
+    recommendationSummary.textContent = "파일을 선택하면 종류와 추천 포맷이 표시됩니다.";
+    return;
+  }
+
+  const inspections = await Promise.all(Array.from(files).map(inspectFile));
+  const convertibleCount = inspections.filter((info) => info.outputs.length > 0).length;
+  recommendationSummary.textContent = `${files.length}개 중 ${convertibleCount}개 파일 변환 가능`;
+  inspections.forEach((info) => recommendationList.appendChild(renderRecommendation(info)));
+}
 
 function showMessage(message) {
   if (!formMessage) {
@@ -38,11 +155,13 @@ function updateSelectedFileText(files) {
   if (files.length === 0) {
     fileName.textContent = "선택된 파일 없음";
     dropzone.classList.remove("has-file");
+    updateRecommendations(files);
     return;
   }
 
   fileName.textContent = files.length === 1 ? files[0].name : `${files.length}개 파일 선택됨`;
   dropzone.classList.add("has-file");
+  updateRecommendations(files);
 }
 
 function setSelectedFiles(files) {
@@ -88,8 +207,8 @@ function updateJob(card, status, progress, message) {
   const jobMessage = card.querySelector(".job-message");
   const clampedProgress = Math.max(0, Math.min(100, progress));
 
-  card.classList.remove("is-processing", "is-completed", "is-failed");
-  badge.classList.remove("status-processing", "status-completed", "status-failed");
+  card.classList.remove("is-processing", "is-completed", "is-failed", "is-not-ready");
+  badge.classList.remove("status-processing", "status-completed", "status-failed", "status-not-ready");
 
   if (status === "completed") {
     card.classList.add("is-completed");
@@ -99,6 +218,10 @@ function updateJob(card, status, progress, message) {
     card.classList.add("is-failed");
     badge.classList.add("status-failed");
     badge.textContent = "실패";
+  } else if (status === "not-ready") {
+    card.classList.add("is-not-ready");
+    badge.classList.add("status-not-ready");
+    badge.textContent = "지원 예정";
   } else {
     card.classList.add("is-processing");
     badge.classList.add("status-processing");
@@ -122,6 +245,17 @@ function finishJob(card, result) {
 
 function failJob(card, message) {
   updateJob(card, "failed", 100, message || "변환하지 못했어요.");
+}
+
+function markNotReady(card, result) {
+  const title = card.querySelector(".job-title span");
+  const outputs = result?.recommended_outputs || [];
+
+  if (outputs.length > 0) {
+    title.textContent = `추천: ${outputs.map((output) => output.toUpperCase()).join(", ")}`;
+  }
+
+  updateJob(card, "not-ready", 100, result?.message || "이 파일 형식의 변환 엔진은 준비 중이에요.");
 }
 
 function convertOneFile(file, targetFormat, onDone) {
@@ -155,6 +289,8 @@ function convertOneFile(file, targetFormat, onDone) {
 
     if (request.status >= 200 && request.status < 300 && result?.status === "completed") {
       finishJob(card, result);
+    } else if (request.status >= 200 && request.status < 300 && result?.status === "not_ready") {
+      markNotReady(card, result);
     } else {
       failJob(card, result?.message);
     }
@@ -224,7 +360,7 @@ if (form && fileInput && jobList && queueCount) {
 
     const files = Array.from(fileInput.files);
     if (files.length === 0) {
-      showMessage("변환할 이미지 파일을 먼저 선택해 주세요.");
+      showMessage("변환할 파일을 먼저 선택해 주세요.");
       return;
     }
 

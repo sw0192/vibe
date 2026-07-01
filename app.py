@@ -8,14 +8,14 @@ from flask import Flask, jsonify, redirect, render_template, request, send_from_
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
+from file_detector import IMAGE_OUTPUTS, detect_file_info
 from image_converter import convert_image, normalize_format
 
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "storage" / "uploads"
 OUTPUT_DIR = BASE_DIR / "storage" / "outputs"
-ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"}
-TARGET_FORMATS = ("jpg", "png", "webp")
+TARGET_FORMATS = IMAGE_OUTPUTS
 
 
 app = Flask(__name__)
@@ -26,8 +26,10 @@ class ConversionInputError(ValueError):
     pass
 
 
-def has_allowed_extension(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+class ConversionNotReady(RuntimeError):
+    def __init__(self, message: str, file_info: dict[str, object]):
+        super().__init__(message)
+        self.file_info = file_info
 
 
 def prepare_storage() -> None:
@@ -54,11 +56,28 @@ def get_target_format() -> str:
 
 def convert_uploaded_file(uploaded_file, target_format: str) -> dict[str, str]:
     if uploaded_file is None or uploaded_file.filename == "":
-        raise ConversionInputError("변환할 이미지 파일을 먼저 선택해 주세요.")
+        raise ConversionInputError("변환할 파일을 먼저 선택해 주세요.")
 
     original_name = uploaded_file.filename
-    if not original_name or not has_allowed_extension(original_name):
-        raise ConversionInputError("JPG, PNG, WEBP, BMP, TIFF 이미지만 변환할 수 있어요.")
+    header = uploaded_file.stream.read(64)
+    uploaded_file.stream.seek(0)
+    file_info = detect_file_info(original_name, header)
+
+    if file_info["kind"] != "image":
+        label = file_info["label"]
+        outputs = ", ".join(str(output).upper() for output in file_info["outputs"])
+        output_text = f"추천 출력: {outputs}." if outputs else "추천 출력은 준비 중이에요."
+        raise ConversionNotReady(
+            f"{label}로 인식했어요. {output_text} 변환 엔진은 다음 단계에서 연결할게요.",
+            file_info,
+        )
+
+    if target_format not in file_info["outputs"]:
+        outputs = ", ".join(str(output).upper() for output in file_info["outputs"])
+        raise ConversionNotReady(
+            f"이 파일은 {outputs} 형식으로 변환할 수 있어요.",
+            file_info,
+        )
 
     prepare_storage()
 
@@ -88,6 +107,9 @@ def convert_uploaded_file(uploaded_file, target_format: str) -> dict[str, str]:
             filename=converted_path.name,
             name=display_output_name,
         ),
+        "detected_kind": str(file_info["kind"]),
+        "detected_format": str(file_info["format"]),
+        "recommended_outputs": file_info["outputs"],
     }
 
 
@@ -127,6 +149,16 @@ def convert_api():
     try:
         target_format = get_target_format()
         result = convert_uploaded_file(request.files.get("image"), target_format)
+    except ConversionNotReady as exc:
+        return jsonify(
+            {
+                "status": "not_ready",
+                "message": str(exc),
+                "detected_kind": str(exc.file_info["kind"]),
+                "detected_format": str(exc.file_info["format"]),
+                "recommended_outputs": exc.file_info["outputs"],
+            }
+        )
     except ConversionInputError as exc:
         return jsonify({"status": "failed", "message": str(exc)}), 400
 
@@ -138,6 +170,13 @@ def convert():
     try:
         target_format = get_target_format()
         result = convert_uploaded_file(request.files.get("image"), target_format)
+    except ConversionNotReady as exc:
+        return render_template(
+            "index.html",
+            target_formats=TARGET_FORMATS,
+            selected_format=request.form.get("target_format", "jpg"),
+            error=str(exc),
+        )
     except ConversionInputError as exc:
         return render_template(
             "index.html",
