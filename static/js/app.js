@@ -11,8 +11,8 @@ const recommendationSummary = document.querySelector("#recommendation-summary");
 
 const IMAGE_OUTPUTS = ["jpg", "png", "webp"];
 const PDF_OUTPUTS = ["jpg", "png", "webp"];
-const VIDEO_OUTPUTS = ["mp4", "mov"];
-const AUDIO_OUTPUTS = ["mp3", "wav", "ogg"];
+const VIDEO_OUTPUTS = ["mp4", "mov", "mp3"];
+const AUDIO_OUTPUTS = ["mp3"];
 const MAX_PARALLEL_CONVERSIONS = 4;
 
 const EXTENSION_HINTS = {
@@ -28,6 +28,8 @@ const EXTENSION_HINTS = {
   mov: ["video", "QuickTime video"],
   webm: ["video", "WEBM video"],
   mp3: ["audio", "MP3 audio"],
+  m4a: ["audio", "M4A audio"],
+  aac: ["audio", "AAC audio"],
   wav: ["audio", "WAV audio"],
   flac: ["audio", "FLAC audio"],
   ogg: ["audio", "OGG audio"],
@@ -43,6 +45,10 @@ function textAt(bytes, start, end) {
   return String.fromCharCode(...bytes.slice(start, end));
 }
 
+function brandAt(bytes) {
+  return textAt(bytes, 8, 12).toLowerCase();
+}
+
 function detectMagic(bytes) {
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return ["image", "JPG image"];
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return ["image", "PNG image"];
@@ -52,7 +58,12 @@ function detectMagic(bytes) {
   if (textAt(bytes, 0, 4) === "RIFF" && textAt(bytes, 8, 12) === "WEBP") return ["image", "WEBP image"];
   if (textAt(bytes, 0, 5) === "%PDF-") return ["document", "PDF document"];
   if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) return ["archive", "ZIP archive"];
-  if (textAt(bytes, 4, 8) === "ftyp") return ["video", "MP4 video"];
+  if (textAt(bytes, 4, 8) === "ftyp") {
+    const brand = brandAt(bytes);
+    if (brand === "m4a " || brand === "m4b ") return ["audio", "M4A audio"];
+    if (brand === "qt  ") return ["video", "QuickTime video"];
+    return ["video", "MP4 video"];
+  }
   if (textAt(bytes, 0, 3) === "ID3" || startsWith(bytes, [0xff, 0xfb]) || startsWith(bytes, [0xff, 0xf3]) || startsWith(bytes, [0xff, 0xf2])) return ["audio", "MP3 audio"];
   if (textAt(bytes, 0, 4) === "RIFF" && textAt(bytes, 8, 12) === "WAVE") return ["audio", "WAV audio"];
   if (textAt(bytes, 0, 4) === "fLaC") return ["audio", "FLAC audio"];
@@ -146,6 +157,20 @@ function clearMessage() {
 function getSelectedFormat() {
   const selectedFormat = form?.querySelector("input[name='target_format']:checked");
   return selectedFormat ? selectedFormat.value : "jpg";
+}
+
+function getSelectedBitrate() {
+  const selectedBitrate = form?.querySelector("input[name='mp3_bitrate']:checked");
+  return selectedBitrate ? selectedBitrate.value : "192k";
+}
+
+function updateBitrateVisibility() {
+  const bitrateGroup = document.querySelector("#bitrate-group");
+  if (!bitrateGroup) {
+    return;
+  }
+
+  bitrateGroup.classList.toggle("is-visible", getSelectedFormat() === "mp3");
 }
 
 function updateSelectedFileText(files) {
@@ -265,6 +290,7 @@ function convertOneFile(file, targetFormat, card) {
   const payload = new FormData();
   payload.append("image", file);
   payload.append("target_format", targetFormat);
+  payload.append("mp3_bitrate", getSelectedBitrate());
 
   request.open("POST", "/api/convert");
   request.responseType = "json";
@@ -375,6 +401,12 @@ if (dropzone && fileInput && fileName) {
     event.preventDefault();
   });
 });
+
+form?.querySelectorAll("input[name='target_format']").forEach((input) => {
+  input.addEventListener("change", updateBitrateVisibility);
+});
+
+updateBitrateVisibility();
 
 if (form && fileInput && jobList && queueCount) {
   form.addEventListener("submit", (event) => {

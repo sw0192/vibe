@@ -8,7 +8,8 @@ from flask import Flask, jsonify, redirect, render_template, request, send_from_
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
-from file_detector import IMAGE_OUTPUTS, VIDEO_OUTPUTS, detect_file_info
+from audio_converter import AudioConversionError, MP3_BITRATES, convert_to_mp3, normalize_mp3_bitrate
+from file_detector import AUDIO_OUTPUTS, IMAGE_OUTPUTS, VIDEO_OUTPUTS, detect_file_info
 from image_converter import convert_image, normalize_format
 from video_converter import FFmpegNotFoundError, VideoConversionError, convert_video, normalize_video_format
 
@@ -16,9 +17,9 @@ from video_converter import FFmpegNotFoundError, VideoConversionError, convert_v
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "storage" / "uploads"
 OUTPUT_DIR = BASE_DIR / "storage" / "outputs"
-TARGET_FORMATS = IMAGE_OUTPUTS + VIDEO_OUTPUTS
+TARGET_FORMATS = tuple(dict.fromkeys(IMAGE_OUTPUTS + VIDEO_OUTPUTS + AUDIO_OUTPUTS))
 MAX_UPLOAD_MB = 1024
-APP_VERSION = "2026-07-02-ffmpeg-video"
+APP_VERSION = "2026-07-02-audio-mp3"
 
 
 app = Flask(__name__)
@@ -57,7 +58,14 @@ def get_target_format() -> str:
     return target_format
 
 
-def convert_uploaded_file(uploaded_file, target_format: str) -> dict[str, str]:
+def get_mp3_bitrate() -> str:
+    try:
+        return normalize_mp3_bitrate(request.form.get("mp3_bitrate", "192k"))
+    except ValueError as exc:
+        raise ConversionInputError("지원하지 않는 MP3 음질이에요.") from exc
+
+
+def convert_uploaded_file(uploaded_file, target_format: str, mp3_bitrate: str = "192k") -> dict[str, str]:
     if uploaded_file is None or uploaded_file.filename == "":
         raise ConversionInputError("변환할 파일을 먼저 선택해 주세요.")
 
@@ -84,8 +92,9 @@ def convert_uploaded_file(uploaded_file, target_format: str) -> dict[str, str]:
     if file_info["kind"] == "image":
         _, output_extension = normalize_format(target_format)
     elif file_info["kind"] == "video":
-        normalized_format = normalize_video_format(target_format)
-        output_extension = f".{normalized_format}"
+        output_extension = ".mp3" if target_format == "mp3" else f".{normalize_video_format(target_format)}"
+    elif file_info["kind"] == "audio":
+        output_extension = ".mp3"
     else:
         label = file_info["label"]
         outputs = ", ".join(str(output).upper() for output in file_info["outputs"])
@@ -103,12 +112,16 @@ def convert_uploaded_file(uploaded_file, target_format: str) -> dict[str, str]:
     try:
         if file_info["kind"] == "image":
             converted_path = convert_image(source_path, target_format, output_file=output_path)
+        elif target_format == "mp3" and file_info["kind"] in ("video", "audio"):
+            converted_path = convert_to_mp3(source_path, output_file=output_path, bitrate=mp3_bitrate)
         else:
             converted_path = convert_video(source_path, target_format, output_file=output_path)
     except FFmpegNotFoundError as exc:
         raise ConversionInputError(str(exc)) from exc
     except VideoConversionError as exc:
         raise ConversionInputError(f"영상 변환에 실패했어요. FFmpeg 메시지: {exc}") from exc
+    except AudioConversionError as exc:
+        raise ConversionInputError(f"오디오 변환에 실패했어요. FFmpeg 메시지: {exc}") from exc
     except Exception as exc:
         raise ConversionInputError(f"변환하지 못했어요. 파일을 확인해 주세요. ({exc})") from exc
 
@@ -125,6 +138,7 @@ def convert_uploaded_file(uploaded_file, target_format: str) -> dict[str, str]:
         "detected_kind": str(file_info["kind"]),
         "detected_format": str(file_info["format"]),
         "recommended_outputs": file_info["outputs"],
+        "mp3_bitrate": mp3_bitrate if target_format == "mp3" else None,
     }
 
 
@@ -138,6 +152,7 @@ def handle_file_too_large(error):
         render_template(
             "index.html",
             target_formats=TARGET_FORMATS,
+            mp3_bitrates=MP3_BITRATES,
             selected_format="jpg",
             error=message,
             app_version=APP_VERSION,
@@ -151,6 +166,7 @@ def index():
     return render_template(
         "index.html",
         target_formats=TARGET_FORMATS,
+        mp3_bitrates=MP3_BITRATES,
         selected_format="jpg",
         app_version=APP_VERSION,
     )
@@ -165,7 +181,7 @@ def convert_get():
 def convert_api():
     try:
         target_format = get_target_format()
-        result = convert_uploaded_file(request.files.get("image"), target_format)
+        result = convert_uploaded_file(request.files.get("image"), target_format, get_mp3_bitrate())
     except ConversionNotReady as exc:
         return jsonify(
             {
@@ -186,11 +202,12 @@ def convert_api():
 def convert():
     try:
         target_format = get_target_format()
-        result = convert_uploaded_file(request.files.get("image"), target_format)
+        result = convert_uploaded_file(request.files.get("image"), target_format, get_mp3_bitrate())
     except ConversionNotReady as exc:
         return render_template(
             "index.html",
             target_formats=TARGET_FORMATS,
+            mp3_bitrates=MP3_BITRATES,
             selected_format=request.form.get("target_format", "jpg"),
             error=str(exc),
             app_version=APP_VERSION,
@@ -199,6 +216,7 @@ def convert():
         return render_template(
             "index.html",
             target_formats=TARGET_FORMATS,
+            mp3_bitrates=MP3_BITRATES,
             selected_format=request.form.get("target_format", "jpg"),
             error=str(exc),
             app_version=APP_VERSION,
@@ -207,6 +225,7 @@ def convert():
     return render_template(
         "index.html",
         target_formats=TARGET_FORMATS,
+        mp3_bitrates=MP3_BITRATES,
         selected_format=target_format,
         original_name=result["original_name"],
         output_name=result["output_name"],

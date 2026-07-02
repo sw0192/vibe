@@ -44,6 +44,23 @@
             </div>
           </div>
 
+          <div id="bitrate-group" class="bitrate-group" aria-label="MP3 음질">
+            <span class="format-label">MP3 음질</span>
+            <div class="bitrate-actions">
+              {% for bitrate in mp3_bitrates %}
+                <label class="bitrate-option">
+                  <input
+                    type="radio"
+                    name="mp3_bitrate"
+                    value="{{ bitrate }}"
+                    {% if bitrate == "192k" %}checked{% endif %}
+                  >
+                  <span>{{ bitrate }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+
           <button id="convert-button" class="convert-button" type="submit">모두 변환</button>
         </section>
       </form>

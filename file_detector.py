@@ -5,8 +5,8 @@ from pathlib import Path
 
 IMAGE_OUTPUTS = ("jpg", "png", "webp")
 PDF_OUTPUTS = ("jpg", "png", "webp")
-VIDEO_OUTPUTS = ("mp4", "mov")
-AUDIO_OUTPUTS = ("mp3", "wav", "ogg")
+VIDEO_OUTPUTS = ("mp4", "mov", "mp3")
+AUDIO_OUTPUTS = ("mp3",)
 
 EXTENSION_HINTS = {
     "jpg": ("image", "jpg", "JPG image"),
@@ -21,6 +21,8 @@ EXTENSION_HINTS = {
     "mov": ("video", "mov", "QuickTime video"),
     "webm": ("video", "webm", "WEBM video"),
     "mp3": ("audio", "mp3", "MP3 audio"),
+    "m4a": ("audio", "m4a", "M4A audio"),
+    "aac": ("audio", "aac", "AAC audio"),
     "wav": ("audio", "wav", "WAV audio"),
     "flac": ("audio", "flac", "FLAC audio"),
     "ogg": ("audio", "ogg", "OGG audio"),

@@ -108,7 +108,8 @@ body {
 }
 
 input[type="file"],
-.format-option input {
+.format-option input,
+.bitrate-option input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -152,9 +153,18 @@ input[type="file"],
   padding: 0 2px;
 }
 
-.format-group {
+.format-group,
+.bitrate-group {
   display: grid;
   gap: 10px;
+}
+
+.bitrate-group {
+  display: none;
+}
+
+.bitrate-group.is-visible {
+  display: grid;
 }
 
 .format-label {
@@ -163,13 +173,15 @@ input[type="file"],
   font-weight: 700;
 }
 
-.format-actions {
+.format-actions,
+.bitrate-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 9px;
 }
 
-.format-option span {
+.format-option span,
+.bitrate-option span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -184,7 +196,9 @@ input[type="file"],
 }
 
 .format-option input:checked + span,
-.format-option span:hover {
+.format-option span:hover,
+.bitrate-option input:checked + span,
+.bitrate-option span:hover {
   border-color: var(--ink);
   background: var(--ink);
   color: #fff;
