@@ -6,7 +6,7 @@ import webbrowser
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from app import app, choose_port, prepare_storage
+from app import APP_VERSION, app, choose_port, prepare_storage
 
 
 def is_converter_running(port: int) -> bool:
@@ -16,7 +16,7 @@ def is_converter_running(port: int) -> bool:
     except (OSError, URLError):
         return False
 
-    return "FILE CONVERTER" in html
+    return "FILE CONVERTER" in html and f'data-app-version="{APP_VERSION}"' in html
 
 
 def find_running_converter(start_port: int = 5000, attempts: int = 20) -> int | None:

@@ -71,12 +71,21 @@ if errorlevel 1 (
 
 call ".venv\Scripts\activate.bat"
 
-echo Installing required libraries...
+echo Installing required libraries and bundled FFmpeg...
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
 if errorlevel 1 (
   echo Failed to install required libraries.
+  pause
+  exit /b 1
+)
+
+python -c "from video_converter import find_ffmpeg; print('FFmpeg ready:', find_ffmpeg())"
+if errorlevel 1 (
+  echo FFmpeg was not prepared automatically.
+  echo Try: winget install Gyan.FFmpeg
+  echo Then close this window and run the launcher again.
   pause
   exit /b 1
 )

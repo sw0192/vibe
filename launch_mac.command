@@ -51,9 +51,17 @@ fi
 
 source ".venv/bin/activate"
 
-echo "Installing required libraries..."
+echo "Installing required libraries and bundled FFmpeg..."
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+
+if ! python -c 'from video_converter import find_ffmpeg; print("FFmpeg ready:", find_ffmpeg())'; then
+  echo "FFmpeg was not prepared automatically."
+  echo "Try: brew install ffmpeg"
+  echo "Then run this launcher again."
+  read -r -p "Press Enter to exit."
+  exit 1
+fi
 
 echo "Starting the converter. Your browser will open automatically."
 python run_converter.py

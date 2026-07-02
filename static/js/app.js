@@ -11,7 +11,7 @@ const recommendationSummary = document.querySelector("#recommendation-summary");
 
 const IMAGE_OUTPUTS = ["jpg", "png", "webp"];
 const PDF_OUTPUTS = ["jpg", "png", "webp"];
-const VIDEO_OUTPUTS = ["mp4", "webm", "gif", "mp3"];
+const VIDEO_OUTPUTS = ["mp4", "mov"];
 const AUDIO_OUTPUTS = ["mp3", "wav", "ogg"];
 const MAX_PARALLEL_CONVERSIONS = 4;
 
