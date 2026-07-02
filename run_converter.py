@@ -49,7 +49,7 @@ def main() -> None:
 
     print(f"File Converter is starting at {url}")
     threading.Timer(1.0, open_browser, args=(url,)).start()
-    app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
+    app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False, threaded=True)
 
 
 if __name__ == "__main__":

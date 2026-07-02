@@ -209,4 +209,4 @@ def download(filename: str):
 
 if __name__ == "__main__":
     prepare_storage()
-    app.run(host="127.0.0.1", port=choose_port(), debug=True, use_reloader=False)
+    app.run(host="127.0.0.1", port=choose_port(), debug=True, use_reloader=False, threaded=True)

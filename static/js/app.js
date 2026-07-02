@@ -13,6 +13,7 @@ const IMAGE_OUTPUTS = ["jpg", "png", "webp"];
 const PDF_OUTPUTS = ["jpg", "png", "webp"];
 const VIDEO_OUTPUTS = ["mp4", "webm", "gif", "mp3"];
 const AUDIO_OUTPUTS = ["mp3", "wav", "ogg"];
+const MAX_PARALLEL_CONVERSIONS = 4;
 
 const EXTENSION_HINTS = {
   jpg: ["image", "JPG image"],
@@ -114,7 +115,7 @@ async function updateRecommendations(files) {
   recommendationList.innerHTML = "";
 
   if (files.length === 0) {
-    recommendationSummary.textContent = "파일을 선택하면 종류와 추천 포맷이 표시됩니다.";
+    recommendationSummary.textContent = "파일을 선택하면 목록과 추천 포맷이 표시됩니다.";
     return;
   }
 
@@ -196,7 +197,8 @@ function createJobCard(file, targetFormat) {
   `;
 
   card.querySelector(".job-title strong").textContent = file.name;
-  card.querySelector(".job-title span").textContent = `${targetFormat.toUpperCase()}로 변환`;
+  card.querySelector(".job-title span").textContent = `${targetFormat.toUpperCase()}로 변환 대기`;
+  updateJob(card, "processing", 0, "대기 중");
   return card;
 }
 
@@ -258,10 +260,7 @@ function markNotReady(card, result) {
   updateJob(card, "not-ready", 100, result?.message || "이 파일 형식의 변환 엔진은 준비 중이에요.");
 }
 
-function convertOneFile(file, targetFormat, onDone) {
-  const card = createJobCard(file, targetFormat);
-  jobList.appendChild(card);
-
+function convertOneFile(file, targetFormat, card) {
   const request = new XMLHttpRequest();
   const payload = new FormData();
   payload.append("image", file);
@@ -284,32 +283,35 @@ function convertOneFile(file, targetFormat, onDone) {
     updateJob(card, "processing", 88, "변환 중");
   });
 
-  request.addEventListener("load", () => {
-    const result = request.response;
+  return new Promise((resolve) => {
+    request.addEventListener("load", () => {
+      const result = request.response;
 
-    if (request.status >= 200 && request.status < 300 && result?.status === "completed") {
-      finishJob(card, result);
-    } else if (request.status >= 200 && request.status < 300 && result?.status === "not_ready") {
-      markNotReady(card, result);
-    } else {
-      failJob(card, result?.message);
-    }
+      if (request.status >= 200 && request.status < 300 && result?.status === "completed") {
+        finishJob(card, result);
+      } else if (request.status >= 200 && request.status < 300 && result?.status === "not_ready") {
+        markNotReady(card, result);
+      } else {
+        failJob(card, result?.message);
+      }
 
-    onDone();
+      resolve();
+    });
+
+    request.addEventListener("error", () => {
+      failJob(card, "서버에 연결하지 못했어요.");
+      resolve();
+    });
+
+    request.addEventListener("timeout", () => {
+      failJob(card, "변환 시간이 너무 오래 걸려 중단됐어요.");
+      resolve();
+    });
+
+    card.querySelector(".job-title span").textContent = `${targetFormat.toUpperCase()}로 변환`;
+    updateJob(card, "processing", 5, "업로드 시작");
+    request.send(payload);
   });
-
-  request.addEventListener("error", () => {
-    failJob(card, "서버에 연결하지 못했어요.");
-    onDone();
-  });
-
-  request.addEventListener("timeout", () => {
-    failJob(card, "변환 시간이 너무 오래 걸려 중단됐어요.");
-    onDone();
-  });
-
-  updateJob(card, "processing", 5, "업로드 시작");
-  request.send(payload);
 }
 
 function setBusy(isBusy) {
@@ -318,7 +320,28 @@ function setBusy(isBusy) {
   }
 
   convertButton.disabled = isBusy;
-  convertButton.textContent = isBusy ? "변환 중" : "변환하기";
+  convertButton.textContent = isBusy ? "일괄 변환 중" : "모두 변환";
+}
+
+async function runBatchConversion(files, targetFormat) {
+  const jobs = files.map((file) => {
+    const card = createJobCard(file, targetFormat);
+    jobList.appendChild(card);
+    return { file, card };
+  });
+
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < jobs.length) {
+      const job = jobs[nextIndex];
+      nextIndex += 1;
+      await convertOneFile(job.file, targetFormat, job.card);
+    }
+  }
+
+  const workerCount = Math.min(MAX_PARALLEL_CONVERSIONS, jobs.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
 }
 
 if (dropzone && fileInput && fileName) {
@@ -365,20 +388,13 @@ if (form && fileInput && jobList && queueCount) {
     }
 
     const targetFormat = getSelectedFormat();
-    let remainingJobs = files.length;
 
     jobList.innerHTML = "";
     queueCount.textContent = `${files.length}개 파일`;
     setBusy(true);
 
-    files.forEach((file) => {
-      convertOneFile(file, targetFormat, () => {
-        remainingJobs -= 1;
-
-        if (remainingJobs === 0) {
-          setBusy(false);
-        }
-      });
+    runBatchConversion(files, targetFormat).finally(() => {
+      setBusy(false);
     });
   });
 }
